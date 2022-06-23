@@ -2,13 +2,31 @@ package org.jponte
 
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
+
+import java.io.{File, PrintWriter}
 import scala.jdk.CollectionConverters._
 
 object Converter {
 
+  def outputFile(content: String): String =
+    s"""import tyrian.Html.*
+       |import tyrian.SVG.*
+       |import tyrian.*
+       |
+       |def view: Html[Msg] = {
+       |  $content
+       |}
+       |""".stripMargin
+
   def main(args: Array[String]): Unit = {
-    val doc = Jsoup.connect("https://en.wikipedia.org/").get
-    println(generate(doc.root()))
+    val doc = Jsoup.parse(new File(args(0)))
+    val content = outputFile(generate(doc.body()))
+
+    val file = new File("result.scala.generated")
+    val pw = new PrintWriter(file)
+    pw.write(content)
+    pw.close()
+
   }
 
   def allTags: List[TagType] = Tags.htmlTags ++ Tags.svgTags
@@ -29,17 +47,19 @@ object Converter {
     }.mkString(", ")
 
     val innerString = if (element.childrenSize() > 0) {
-      s"(\n${element.children().asScala.map(element => generate(element, depth + 1)).mkString("\n")})"
+      s"(\n${element.children().asScala.map(element => generate(element, depth + 1)).mkString(",\n")})"
     } else if (element.hasText) {
       s"(\"${element.text()}\")"
-    } else {
+    } else if (tagType.exists(_.isInstanceOf[NoChildren])) {
       ""
+    } else {
+      "()"
     }
 
     val tabs: String = (0 until depth).map(_ => "\t").mkString("")
 
     tagType match {
-      case Some(tag) => s"$tabs${tag.name}(${attrString})$innerString"
+      case Some(tag) => s"$tabs${tag.name}($attrString)$innerString"
       case None => s"${tabs}tag(\"${element.tagName()}\")($attrString)$innerString"
     }
   }
